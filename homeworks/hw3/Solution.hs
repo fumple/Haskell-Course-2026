@@ -1,5 +1,7 @@
-import Data.Map hiding (map, foldr)
+import Data.Map hiding (delete, map, foldr, take, null)
+import Data.List (delete, intersect)
 import Control.Monad.Writer
+import Control.Monad (guard)
 
 -- 1. Maze navigation
 type Pos = (Int, Int)
@@ -41,7 +43,26 @@ decryptWords key = traverse (decrypt key)
 -- 3. Seating arrangements
 type Guest = String
 type Conflict = (Guest, Guest)
--- TODO: seatings :: [Guest] -> [Conflict] -> [[Guest]]
+
+-- https://stackoverflow.com/a/40099411
+permutations :: [Guest] -> [[Guest]]
+permutations [] = [[]]
+permutations guests = do
+    guest <- guests
+    let l = delete guest guests
+    ls <- permutations l
+    return $ guest : ls
+
+seatings :: [Guest] -> [Conflict] -> [[Guest]]
+seatings guests conflicts = do
+    perm <- permutations guests
+    let a = perm
+    let b = tail perm ++ [head perm]
+    let l1 = zip a b
+    let l2 = zip b a
+    guard (null $ intersect l1 conflicts)
+    guard (null $ intersect l2 conflicts)
+    return perm
 
 -- 4. Result monad with warnings
 data Result a = Failure String | Success a [String] deriving (Show)
