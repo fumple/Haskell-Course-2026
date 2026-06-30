@@ -1,24 +1,16 @@
 module Main (main) where
 
-import Lib
-import qualified Data.ByteString.Lazy.Char8 as BSL
+import System.Environment (getArgs)
+import qualified Commands as C
 
 main :: IO ()
 main = do
-  let packedContents = BSL.pack "Hello World!"
-
-  -- Write object
-  hash <- writeObject (Blob packedContents)
-  putStrLn hash
-
-  -- Read back object
-  obj <- readObject hash
-  case obj of
-    Just (Blob str) -> do 
-      putStr "Blob: "
-      BSL.putStrLn str
-      if packedContents == str
-        then putStrLn "Success! Contents match!"
-        else putStrLn "Fail! Contents don't match!"
-    Nothing -> putStrLn "Didn't find the object!"
-    _ -> putStrLn "Got back unexpected object type!"
+  args <- getArgs
+  case args of
+    "init" : _ -> C.runCommand (C.CInit)
+    "add" : fp : _ -> C.runCommand (C.CAdd fp)
+    "commit" : "-m" : msg : _ -> C.runCommand (C.CCommit msg)
+    "log" : _ -> C.runCommand (C.CLog)
+    "checkout" : cm : _ -> C.runCommand (C.CCheckout cm)
+    _ -> do
+      putStrLn "Available commands: init, add, commit, log, checkout"
