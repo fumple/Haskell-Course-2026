@@ -40,6 +40,7 @@ item = do
 remainingItems :: Parser BS.ByteString
 remainingItems = do
   s <- get
+  put BS.empty
   pure s
 
 infixr 5 <|>

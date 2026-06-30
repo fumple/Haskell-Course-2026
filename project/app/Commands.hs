@@ -1,6 +1,6 @@
 module Commands (runCommand, Command (..))
 where
-import System.Directory (doesDirectoryExist, createDirectoryIfMissing, doesFileExist)
+import System.Directory (doesDirectoryExist, createDirectoryIfMissing, doesFileExist, removeDirectoryRecursive, removeFile, createDirectory, removePathForcibly)
 import Lib
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import System.FilePath (splitDirectories)
@@ -43,6 +43,7 @@ commandInit = do
       _ <- writeIndex hash
       pure ()
 
+-- TODO: I don't think this supports removing a file at the moment
 commandAdd :: FilePath -> MaybeT IO ()
 commandAdd fp = do
   --fullDir <- lift $ makeAbsolute fp
@@ -150,7 +151,12 @@ commandCheckout ch = do
       case (tree1, tree2) of
         (Tree oldEntries, Tree newEntries) -> do
           _ <- ensureThatChangesWontBeLost oldEntries newEntries "."
-          lift $ putStrLn "No changes will be lost!"
+          -- no changes will be lost, applying checkout
+          _ <- applyCheckout oldEntries newEntries "."
+          _ <- lift $ writeIndex (commitTree ci)
+          _ <- lift $ writeHead ch
+          _ <- lift $ putStrLn "Success!"
+          pure ()
         _ -> do
           lift $ putStrLn "Expected two trees to be attached, found something else!"
           fail ""
@@ -160,9 +166,7 @@ commandCheckout ch = do
   where
     -- Trusting, that the on disk files (inputs) were sorted
     ensureThatChangesWontBeLost :: [TreeEntry] -> [TreeEntry] -> String -> MaybeT IO ()
-    ensureThatChangesWontBeLost [] y path = do
-      trace ("ensureThatChangesWontBeLost called with:\n[]\n" ++
-        show y ++ "\n" ++ show path) $ pure ()
+    ensureThatChangesWontBeLost [] _ _ = do
       pure ()
     ensureThatChangesWontBeLost (x:xs) [] path = do
       let xn = entryName x
@@ -258,3 +262,120 @@ commandCheckout ch = do
         _ <- lift $ putStrLn $ "this should be unreachable"
         fail ""
 
+    -- Same here: Trusting, that the on disk files (inputs) were sorted
+    applyCheckout :: [TreeEntry] -> [TreeEntry] -> String -> MaybeT IO ()
+    applyCheckout [] [] _ = pure ()
+    applyCheckout [] (y:ys) path = do
+      let yn = entryName y
+      let yk = entryKind y
+      let yh = entryHash y
+      let fullpath = path ++ "/" ++ yn
+      obj <- readObject yh
+      case yk of
+        Dir -> do
+          case obj of
+            Tree subentries -> do
+              applyCheckout [] subentries fullpath
+            _ -> do
+              _ <- lift $ putStrLn "Encountered unexpected object!"
+              fail ""
+        File -> do
+          case obj of
+            (Blob str) -> do
+              _ <- lift $ BSL.writeFile fullpath str
+              pure ()
+            _ -> do
+              _ <- lift $ putStrLn "Encountered unexpected object!"
+              fail ""
+      applyCheckout [] ys path
+          
+    applyCheckout (x:xs) [] path = do
+      let xn = entryName x
+      let xk = entryKind x
+      let fullpath = path ++ "/" ++ xn
+      case xk of
+        Dir -> do
+          _ <- lift $ removeDirectoryRecursive fullpath
+          pure ()
+        File -> do
+          _ <- lift $ removeFile fullpath
+          pure ()
+      applyCheckout xs [] path
+    applyCheckout (x:xs) (y:ys) path = do
+      let xn = entryName x
+      let yn = entryName y
+      let xk = entryKind x
+      let yk = entryKind y
+      let xh = entryHash x
+      let yh = entryHash y
+      if xn == yn && xh == yh
+        then pure ()
+      else if xn == yn && yk == File
+        then do
+          case xk of
+            Dir -> do
+              _ <- lift $ removeDirectoryRecursive (path ++ "/" ++ xn)
+              pure ()
+            File -> pure ()
+
+          yo <- readObject yh
+          case yo of
+            (Blob str) -> do
+              _ <- lift $ BSL.writeFile (path ++ "/" ++ xn) str
+              pure ()
+            _ -> do
+              _ <- lift $ putStrLn "Encountered unexpected object!"
+              fail ""
+
+          applyCheckout xs ys path
+      else if xn == yn && xk == Dir && yk == Dir
+        then do
+          tree1 <- readObject xh
+          tree2 <- readObject yh
+          case (tree1, tree2) of
+            (Tree t1, Tree t2) -> do
+              applyCheckout t1 t2 (path ++ "/" ++ xn)
+              applyCheckout xs ys path
+            _ -> do
+              _ <- lift $ putStrLn "Invalid data found!"
+              fail ""
+      else if xn == yn && xk == File && yk == Dir
+        then do
+          _ <- lift $ removeFile (path ++ "/" ++ xn)
+          _ <- lift $ createDirectory (path ++ "/" ++ xn)
+          tree <- readObject yh
+          case tree of
+            Tree t -> do
+              applyCheckout [] t (path ++ "/" ++ xn)
+              applyCheckout xs ys path
+            _ -> do
+              _ <- lift $ putStrLn "Invalid data found!"
+              fail ""
+      else if xn > yn -- so there is a new file in Y that wasn't in x
+        then do
+          obj <- readObject yh
+          case yk of
+            Dir -> do
+              case obj of
+                Tree subentries -> do
+                  applyCheckout [] subentries (path ++ "/" ++ yn)
+                _ -> do
+                  _ <- lift $ putStrLn "Encountered unexpected object!"
+                  fail ""
+            File -> do
+              case obj of
+                (Blob str) -> do
+                  _ <- lift $ BSL.writeFile (path ++ "/" ++ yn) str
+                  pure ()
+                _ -> do
+                  _ <- lift $ putStrLn "Encountered unexpected object!"
+                  fail ""
+          applyCheckout (x:xs) ys path
+      else if xn < yn -- so there is a file in X that is no longer in Y
+        then do
+          _ <- lift $ removePathForcibly (path ++ "/" ++ xn)
+          applyCheckout xs (y:ys) path
+      else do
+        -- this should be every case
+        _ <- lift $ putStrLn $ "this should be unreachable"
+        fail ""
