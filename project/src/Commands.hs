@@ -8,7 +8,6 @@ import Control.Monad.RWS (MonadTrans(lift))
 import qualified Data.ByteString.Lazy as BSL
 import Types
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Debug.Trace (trace)
 
 data Command = CInit | CAdd FilePath | CCommit String | CLog | CCheckout String
 runCommand :: Command -> IO ()

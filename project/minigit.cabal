@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Commands
       Lib
       Parser
       Types
@@ -49,7 +50,6 @@ library
 executable minigit-exe
   main-is: Main.hs
   other-modules:
-      Commands
       Paths_minigit
   autogen-modules:
       Paths_minigit

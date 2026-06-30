@@ -23,7 +23,7 @@ import Data.Digest.Pure.SHA (sha1, showDigest)
 import System.IO (openFile, IOMode (ReadMode))
 import System.Exit (exitWith, ExitCode (ExitFailure))
 import Control.Monad.Trans.Maybe (MaybeT)
-import Control.Monad.RWS (MonadTrans(lift))
+import Control.Monad.Trans (MonadTrans(lift))
 import qualified Debug.Trace as DEBUG
 
 -- Object Store
